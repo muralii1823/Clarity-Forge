@@ -9,7 +9,13 @@ import pytesseract
 # ──────────────────────────────────────────────────────────────────────────────
 # CONFIG
 # ──────────────────────────────────────────────────────────────────────────────
-GEMINI_API_KEY = st.secrets["GEMINI_API_KEY"]
+# Use st.secrets to securely manage the API key for public deployment
+try:
+    GEMINI_API_KEY = st.secrets["GEMINI_API_KEY"]
+except KeyError:
+    st.error("API key not found. Please add it to your Streamlit secrets.")
+    st.stop()
+    
 GEMINI_API_URL = "https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash-preview-05-20:generateContent"
 HERO_BACKGROUND_IMAGE_URL = "https://images.unsplash.com/photo-1518709268805-4e9042af2176?ixlib=rb-4.0.3&auto=format&fit=crop&w=2000&q=80"
 
@@ -824,12 +830,10 @@ header {{visibility: hidden;}}
     <div class="particle"></div>
 </div>
 
-
-<div class="feature-card fade-in-up">
 <div class="hero-container">
     <div class="hero-content">
         <div class="hero-badge">
-           <h1>🚀 CLARITY FORGE — From Chaos to Clarity </h1>
+           <span class="icon-rocket">🚀</span> CLARITY FORGE — FROM CHAOS TO CLARITY
         </div>
         <h1 class="main-tagline">
              Unstructured → JSON + Summary
@@ -838,7 +842,6 @@ header {{visibility: hidden;}}
             Transform complex documents into actionable, structured data instantly.
         </p>
     </div>
-</div>
 </div>
 
 <div class="features-grid">
@@ -875,6 +878,13 @@ header {{visibility: hidden;}}
 
 # Main Application Card
 st.markdown('<div class="main-card fade-in-up">', unsafe_allow_html=True)
+
+st.markdown("""
+<div class="upload-section">
+    <h3 class="upload-title">Start the Magic ✨</h3>
+    <p class="upload-description">Upload a PDF or Image below to begin the analysis.</p>
+</div>
+""", unsafe_allow_html=True)
 
 ocr_language_options = {"English":"eng","Spanish":"spa","French":"fra","Tamil":"tam","Auto-detect":"auto"}
 colA, colB = st.columns([2,1])
