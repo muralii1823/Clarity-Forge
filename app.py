@@ -19,13 +19,9 @@ except KeyError:
 GEMINI_API_URL = "https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash-preview-05-20:generateContent"
 HERO_BACKGROUND_IMAGE_URL = "https://images.unsplash.com/photo-1518709268805-4e9042af2176?ixlib=rb-4.0.3&auto=format&fit=crop&w=2000&q=80"
 
-# macOS (Homebrew) defaults; adjust for your machine if needed
-try:
-    pytesseract.pytesseract.tesseract_cmd = "/opt/homebrew/bin/tesseract"
-except Exception:
-    pass
-os.environ["PATH"] += os.pathsep + "/opt/homebrew/bin"
-os.environ["PATH"] += os.pathsep + "/opt/homebrew/sbin"
+# Remove the hardcoded tesseract paths to work with Streamlit's container
+# The `packages.txt` file handles installation of tesseract-ocr on the server
+# The python code can then find it automatically.
 
 # ──────────────────────────────────────────────────────────────────────────────
 # BACKEND: extraction (PyMuPDF → OCR fallback)
