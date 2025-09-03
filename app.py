@@ -9,7 +9,7 @@ import pytesseract
 # ──────────────────────────────────────────────────────────────────────────────
 # CONFIG
 # ──────────────────────────────────────────────────────────────────────────────
-GEMINI_API_KEY = os.environ.get("GEMINI_API_KEY", "AIzaSyD2cuwBME2xf8h-7v7Z6-chsQt6LrnNT5k")
+GEMINI_API_KEY = st.secrets["GEMINI_API_KEY"]
 GEMINI_API_URL = "https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash-preview-05-20:generateContent"
 HERO_BACKGROUND_IMAGE_URL = "https://images.unsplash.com/photo-1518709268805-4e9042af2176?ixlib=rb-4.0.3&auto=format&fit=crop&w=2000&q=80"
 
