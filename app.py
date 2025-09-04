@@ -1,6 +1,6 @@
 import os, io, time, json, requests, re
 import streamlit as st
-import streamlit.components.v1 as components # Import components for custom HTML buttons
+import streamlit.components.v1 as components
 import fitz # PyMuPDF
 from PIL import Image
 from pdf2image import convert_from_bytes
@@ -18,10 +18,6 @@ except KeyError:
     
 GEMINI_API_URL = "https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash-preview-05-20:generateContent"
 HERO_BACKGROUND_IMAGE_URL = "https://images.unsplash.com/photo-1518709268805-4e9042af2176?ixlib=rb-4.0.3&auto=format&fit=crop&w=2000&q=80"
-
-# Remove the hardcoded tesseract paths to work with Streamlit's container
-# The `packages.txt` file handles installation of tesseract-ocr on the server
-# The python code can then find it automatically.
 
 # ──────────────────────────────────────────────────────────────────────────────
 # BACKEND: extraction (PyMuPDF → OCR fallback)
@@ -59,7 +55,6 @@ def extract_text_from_document(uploaded_file: io.BytesIO, file_type: str, ocr_la
     except Exception as e:
         st.error("Failed to read uploaded file. Please ensure it is not corrupted."); return ""
     
-    # Handle language for OCR
     ocr_lang_code = ocr_language if ocr_language.lower() != "auto" else "eng"
 
     with st.status(f"Extracting text from {file_type.split('/')[-1].upper()}…") as status_container:
@@ -91,33 +86,25 @@ def extract_text_from_document(uploaded_file: io.BytesIO, file_type: str, ocr_la
 @st.cache_resource(show_spinner=False)
 def call_gemini_api(prompt: str, response_schema: dict | None = None, max_retries: int = 4) -> str | None:
     """Makes a request to the Gemini API with retry logic and caching."""
-    if not GEMINI_API_KEY:
-        st.warning("GEMINI_API_KEY not set. Using mock response."); return json.dumps(
-            {"document_title": "Mock Document", "author": "N/A", "date": "N/A",
-             "summary": "Mock summary for offline demo.",
-             "key_points": ["Works without API key", "Set GEMINI_API_KEY for live results"]},
-            ensure_ascii=False, indent=2)
-
     headers = {"Content-Type": "application/json"}
     payload = {"contents": [{"role": "user", "parts": [{"text": prompt}]}]}
     if response_schema:
         payload["generationConfig"] = {"responseMimeType": "application/json", "responseSchema": response_schema}
     
-    with st.status("Connecting to Gemini API...") as status_container:
+    with st.spinner("Connecting to Gemini API..."):
         for attempt in range(max_retries):
             try:
                 url = f"{GEMINI_API_URL}?key={GEMINI_API_KEY}"
-                status_container.update(label=f"Attempt {attempt+1}/{max_retries}: Sending request…", state="running")
                 resp = requests.post(url, headers=headers, data=json.dumps(payload), timeout=90)
                 resp.raise_for_status()
                 data = resp.json()
                 parts = data.get("candidates", [{}])[0].get("content", {}).get("parts", [])
                 if parts:
-                    status_container.update(label="Gemini API call successful.", state="complete", expanded=False); return parts[0].get("text", "")
+                    return parts[0].get("text", "")
                 st.error(f"Unexpected API response: {json.dumps(data)[:500]}"); return None
             except requests.exceptions.RequestException as e:
                 if attempt < max_retries - 1:
-                    wait = 2 ** attempt; status_container.update(label=f"API error. Retrying in {wait}s… ({e})", state="running"); time.sleep(wait)
+                    wait = 2 ** attempt; time.sleep(wait)
                 else:
                     st.error("Gemini API failed after retries."); return None
             except Exception as e:
@@ -894,18 +881,25 @@ uploaded_file = st.file_uploader("Choose a PDF or Image file", type=["pdf","jpg"
 
 if uploaded_file is not None:
     uploaded_file.seek(0)
-    extracted_text = extract_text_from_document(uploaded_file, uploaded_file.type, ocr_language_code)
+    # Store extracted_text in session state
+    st.session_state.extracted_text = extract_text_from_document(uploaded_file, uploaded_file.type, ocr_language_code)
+    # Reset chat history when a new file is uploaded
+    st.session_state.messages = []
 
-    if extracted_text:
+    if st.session_state.extracted_text:
         with st.spinner("Analyzing with LLM and generating JSON…"):
-            structured_data = document_to_json_agent(extracted_text, selected_language_name)
+            structured_data = document_to_json_agent(st.session_state.extracted_text, selected_language_name)
 
         if structured_data:
             st.markdown("#### Extraction Stats")
-            approx_tokens = max(1, len(extracted_text)//4)
-            st.write({"Type": uploaded_file.type, "Characters": len(extracted_text), "ApproxTokens": approx_tokens, "Language": selected_language_name})
-            st.markdown("#### Raw Extracted Text")
-            st.text_area("Raw Text", extracted_text, height=260)
+            approx_tokens = max(1, len(st.session_state.extracted_text)//4)
+            st.write({"Type": uploaded_file.type, "Characters": len(st.session_state.extracted_text), "ApproxTokens": approx_tokens, "Language": selected_language_name})
+            
+            # Use a collapsible expander for raw text
+            st.markdown("---")
+            st.markdown("### 📝 Raw Extracted Text")
+            with st.expander("Click to view the full extracted text"):
+                st.text(st.session_state.extracted_text)
 
             st.markdown("#### Structured JSON")
             pretty = json.dumps(structured_data, indent=2, ensure_ascii=False)
@@ -914,12 +908,73 @@ if uploaded_file is not None:
             st.markdown("#### Summary")
             summary_md = json_to_readable(structured_data)
             st.markdown(summary_md)
+            
+            # ──────────────────────────────────────────────────────────────────────────────
+            # CHATBOT FEATURE
+            # ──────────────────────────────────────────────────────────────────────────────
+            st.markdown("---")
+            st.markdown("### 💬 Chat with your Document")
+            
+            # Display chat messages from history on app rerun
+            if 'messages' in st.session_state:
+                for message in st.session_state.messages:
+                    with st.chat_message(message["role"]):
+                        st.markdown(message["content"])
+
         else:
             st.error("Failed to generate structured JSON.")
     else:
         st.error("Failed to extract readable text.")
 
 st.markdown('</div>', unsafe_allow_html=True)
+
+
+# ──────────────────────────────────────────────────────────────────────────────
+# CHAT INPUT AT THE BOTTOM
+# ──────────────────────────────────────────────────────────────────────────────
+# This section is outside the main 'if uploaded_file is not None' block
+# so the chat input is rendered at the bottom of the page.
+if 'extracted_text' in st.session_state and st.session_state.extracted_text:
+    # Accept user input
+    if prompt := st.chat_input("Ask questions about the uploaded document..."):
+        # Add user message to chat history
+        st.session_state.messages.append({"role": "user", "content": prompt})
+        # Display user message in chat message container
+        with st.chat_message("user"):
+            st.markdown(prompt)
+
+        # Display assistant response in chat message container
+        with st.chat_message("assistant"):
+            with st.spinner("Thinking..."):
+                # Combine the document text and user question for the LLM prompt
+                llm_prompt = f"""You are a helpful AI assistant that answers questions based on the document text provided.
+                Your task is to provide concise, accurate answers. If the information is not in the document, say so.
+                
+                Document Text:
+                ```
+                {st.session_state.extracted_text}
+                ```
+                
+                User's Question:
+                {prompt}
+                
+                Answer:
+                """
+                
+                # Call the Gemini API with the combined prompt
+                assistant_response = call_gemini_api(llm_prompt)
+                
+                if assistant_response:
+                    st.markdown(assistant_response)
+                    # Add assistant response to chat history
+                    st.session_state.messages.append({"role": "assistant", "content": assistant_response})
+                else:
+                    st.error("Failed to get a response from the AI.")
+else:
+    # Clear chat history when no file is uploaded or processing fails
+    if 'messages' in st.session_state:
+        st.session_state.messages = []
+
 
 st.markdown("""
 <div class="footer">
